@@ -18,7 +18,7 @@ exactamente estos pasos).
 **Clonar el repositorio y definir variables** (todo desde una shell de root: `sudo -i`)
 
 ```bash
-git clone <URL-DEL-REPO> tp2 && cd tp2
+git clone https://github.com/juanpablocadenteferreiro/administracion-redes-tp4.git tp2 && cd tp2
 
 export VPN_PREFIX=10.8.0            # red de la VPN: 10.8.0.0/24
 export VPN_IP=${VPN_PREFIX}.1       # IP del servidor dentro de la VPN

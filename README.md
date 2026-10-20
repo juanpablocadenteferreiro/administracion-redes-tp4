@@ -35,7 +35,7 @@ En un Ubuntu Server 24.04 / Debian 12 recién instalado, con un usuario con `sud
 cargada**:
 
 ```bash
-git clone <URL-DEL-REPO> tp2 && cd tp2
+git clone https://github.com/juanpablocadenteferreiro/administracion-redes-tp4.git tp2 && cd tp2
 cp setup.env.example setup.env        # opcional: editar usuarios, endpoint, etc.
 sudo ./setup.sh
 ```
