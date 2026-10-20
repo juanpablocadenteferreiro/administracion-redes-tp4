@@ -1,0 +1,6 @@
+# TP2 - WireGuard (servidor)  ->  /etc/wireguard/wg0.conf  (permisos 600)
+# Los peers (clientes) los agrega scripts/add-vpn-client.sh al final de este archivo.
+[Interface]
+Address = @VPN_IP@/24
+ListenPort = @WG_PORT@
+PrivateKey = @SERVER_PRIVATE_KEY@

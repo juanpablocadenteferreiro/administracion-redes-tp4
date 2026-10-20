@@ -1,2 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Todo el contenido se usa en Linux: forzar finales de linea LF tambien al clonar en Windows
+* text=auto eol=lf

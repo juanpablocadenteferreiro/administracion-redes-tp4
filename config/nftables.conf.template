@@ -1,0 +1,78 @@
+#!/usr/sbin/nft -f
+# =============================================================================
+# TP2 - Firewall del servidor (nftables)
+#
+# Politica: TODO denegado por defecto. Desde la interfaz publica solo entra:
+#   - WireGuard   (UDP @WG_PORT@)
+#   - SSH de administracion (TCP @SSH_PORT@), con limite de nuevas conexiones
+# Todo lo demas (web, metricas, ...) solo es alcanzable por la interfaz VPN wg0.
+#
+# IMPORTANTE: no se usa "flush ruleset" para no borrar las tablas que crea Docker.
+# Las reglas de este archivo viven en su propia tabla (inet tp2): se declara,
+# se borra y se vuelve a crear, asi se puede recargar las veces que haga falta.
+# =============================================================================
+
+table inet tp2
+delete table inet tp2
+
+table inet tp2 {
+
+    # Origenes autorizados para SSH publico (por defecto cualquiera: 0.0.0.0/0).
+    # Para restringirlo: SSH_ALLOW_FROM="190.1.2.3, 200.4.5.0/24" en setup.env
+    set ssh_permitidos {
+        type ipv4_addr
+        flags interval
+        elements = { @SSH_ALLOW_FROM@ }
+    }
+
+    # ---------------------------------------------------------------- INPUT --
+    # Trafico dirigido al propio host (sshd, wireguard, netdata en red host, ...)
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iifname "lo" accept
+        ct state invalid drop
+        ct state established,related accept
+
+        # Antispoofing: nadie de afuera puede hacerse pasar por la red de la VPN
+        iifname != "wg0" ip saddr @VPN_SUBNET@ counter drop comment "suplantacion de IP VPN"
+
+        # Todo lo que entra por el tunel VPN esta permitido (ssh, web, metricas)
+        iifname "wg0" accept comment "VPN"
+
+        # ---- Interfaz publica: solo VPN y SSH -------------------------------
+        udp dport @WG_PORT@ accept comment "WireGuard"
+        ip saddr @ssh_permitidos tcp dport @SSH_PORT@ ct state new limit rate 10/minute burst 10 packets accept comment "SSH admin (con limite)"
+
+        # Bloqueo explicito (y con contador, para mostrarlo en la demo) de servicios internos
+        tcp dport { 80, 443, 19999 } counter drop comment "web/metricas: solo por VPN"
+
+        # Minimo necesario para que la red funcione
+        ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } limit rate 10/second accept
+        icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+        icmpv6 type echo-request limit rate 10/second accept
+        udp sport 67 udp dport 68 accept comment "cliente DHCP"
+    }
+
+    # -------------------------------------------------------------- FORWARD --
+    # Trafico que atraviesa el host: aca caen las conexiones hacia los contenedores
+    # publicados (despues del DNAT de Docker).
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+
+        ct state invalid drop
+        ct state established,related accept
+
+        # Solo la VPN puede iniciar conexiones hacia los contenedores
+        iifname "wg0" oifname "br-*" accept
+        iifname "wg0" oifname "docker0" accept
+
+        # Los contenedores pueden salir (actualizaciones, DNS, ...) y hablar entre si
+        iifname "br-*" accept
+        iifname "docker0" accept
+
+        # Cualquier otra cosa que intente entrar a un contenedor (ej. desde la interfaz publica)
+        oifname "br-*" counter drop comment "contenedores: solo desde la VPN"
+        oifname "docker0" counter drop comment "contenedores: solo desde la VPN"
+    }
+}

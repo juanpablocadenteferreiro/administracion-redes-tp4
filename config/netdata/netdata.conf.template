@@ -1,0 +1,9 @@
+# TP2 - Netdata: solo accesible por la VPN
+[global]
+    run as user = netdata
+
+[web]
+    default port = 19999
+    bind to = @VPN_IP@
+    allow connections from = localhost @VPN_PREFIX@.*
+    allow dashboard from = localhost @VPN_PREFIX@.*

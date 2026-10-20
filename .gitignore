@@ -1,0 +1,12 @@
+# Nunca subir secretos al repositorio
+*.key
+*.psk
+setup.env
+tp2-credenciales*.txt
+htpasswd
+clients/
+wg0.conf
+.env
+
+# Claves publicas de los usuarios (esas SI se pueden subir)
+!keys/*.pub

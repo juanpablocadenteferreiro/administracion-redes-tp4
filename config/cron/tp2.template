@@ -1,0 +1,9 @@
+# TP2 - tareas programadas  ->  /etc/cron.d/tp2
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Backup de /home/* (snapshots incrementales con hardlinks)
+@BACKUP_CRON@ root /usr/local/sbin/backup-home.sh >> /var/log/tp2-backup.log 2>&1
+
+# Regenera la pagina principal con los enlaces a los public_html de los usuarios
+*/5 * * * * root /usr/local/sbin/genindex.sh

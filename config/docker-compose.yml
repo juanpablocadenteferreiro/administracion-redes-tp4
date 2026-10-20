@@ -1,0 +1,66 @@
+# TP2 - Stack de contenedores (servidor web + monitoreo)
+# Se despliega en /opt/tp2 junto a un archivo .env con:  VPN_IP=10.8.0.1
+#
+# Aislamiento de red:
+#   - web:     el puerto se publica SOLO en la IP privada de la VPN del host (${VPN_IP}),
+#              nunca en 0.0.0.0, asi que no existe en la interfaz publica.
+#   - netdata: usa la red del host (necesita ver las interfaces reales, incluida wg0) y se
+#              enlaza a ${VPN_IP} desde netdata.conf. El firewall (nftables) lo bloquea
+#              ademas en cualquier interfaz que no sea wg0.
+name: tp2
+
+services:
+  web:
+    image: nginxinc/nginx-unprivileged:stable-alpine   # nginx corriendo como usuario no-root (uid 101), escucha en 8080
+    container_name: tp2-web
+    restart: unless-stopped                            # vuelve solo despues de un reinicio
+    ports:
+      - "${VPN_IP}:80:8080"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro        # bonus: autenticacion HTTP basica
+      - /srv/tp2/www:/usr/share/nginx/html:ro          # pagina principal (la genera genindex.sh)
+      - /home:/home:ro                                 # /home/<usuario>/public_html -> /~<usuario>/
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  netdata:
+    image: netdata/netdata:stable
+    container_name: tp2-netdata
+    restart: unless-stopped
+    pid: host
+    network_mode: host                                 # ve wg0 y el resto de interfaces reales del host
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      DO_NOT_TRACK: "1"                                # sin telemetria
+      NETDATA_HEALTHCHECK_TARGET: cli                  # el healthcheck por defecto usa localhost:19999, que no escucha (bind a la VPN)
+    volumes:
+      - ./netdata/netdata.conf:/etc/netdata/netdata.conf:ro   # bind a la IP de la VPN
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      # Nota: a proposito NO se monta /var/run/docker.sock (equivale a dar root del host).
+      # Netdata igual mide los contenedores via cgroups.
+
+volumes:
+  netdatalib:
+  netdatacache:

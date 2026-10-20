@@ -1,0 +1,19 @@
+[Unit]
+Description=TP2 - Stack Docker Compose (web + netdata)
+Documentation=file:///opt/tp2/docker-compose.yml
+Requires=docker.service wg-quick@wg0.service
+After=docker.service wg-quick@wg0.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/tp2
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+# Sin ExecStop a proposito: si al apagar se hiciera "docker compose stop", Docker marcaria los
+# contenedores como detenidos a mano y "restart: unless-stopped" no los volveria a levantar.
+# Asi la politica de reinicio y esta unidad son dos mecanismos independientes.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
