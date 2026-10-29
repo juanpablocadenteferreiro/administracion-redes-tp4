@@ -58,9 +58,14 @@ $disk = "$env:USERPROFILE\VirtualBox VMs\tp2-servidor\tp2-servidor.vdi"
     --time-zone=America/Argentina/Buenos_Aires --start-vm=gui
 ```
 
-Después de instalar: `sudo apt install openssh-server` y copiar la clave pública de la PC a
-`~/.ssh/authorized_keys` del administrador (`ssh-keygen -t ed25519` en Windows genera el par en
-`%USERPROFILE%\.ssh\`).
+Después de instalar:
+
+- `sudo apt install openssh-server` y copiar la clave pública de la PC a `~/.ssh/authorized_keys`
+  del administrador (`ssh-keygen -t ed25519` en Windows genera el par en `%USERPROFILE%\.ssh\`).
+- Activar la hora por NTP: `sudo timedatectl set-ntp true` y
+  `sudo timedatectl set-timezone America/Argentina/Buenos_Aires`. La instalación desatendida de
+  VirtualBox deja NTP apagado, y con la VM corriendo sobre Hyper-V el reloj se atrasa; los nombres
+  de los snapshots de backup dependen de la hora.
 
 ## Aprovisionar el servidor
 
