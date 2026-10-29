@@ -189,8 +189,8 @@ cp /etc/nftables.conf /etc/nftables.conf.orig 2>/dev/null || true
 render config/nftables.conf.template > /etc/nftables.conf
 nft -c -f /etc/nftables.conf               # valida la sintaxis sin aplicar
 ufw status 2>/dev/null | grep -q active && ufw disable    # que no pise a nftables
-systemctl enable nftables
-nft -f /etc/nftables.conf                  # aplica ahora (el servicio la recarga en cada arranque)
+systemctl enable nftables                  # la carga en cada arranque
+systemctl restart nftables                 # la aplica ahora (y la unidad queda "active")
 ```
 
 Qué hace (detalle en el archivo, comentado línea por línea):

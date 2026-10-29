@@ -1,126 +1,167 @@
-# Guion de demostración en vivo
+# Guion de la demostración
 
-Duración estimada: 10–12 minutos. Se necesitan **dos máquinas**: el servidor y otra computadora
-(la "cliente") en la misma red, con la app WireGuard y un navegador.
+Sigue la lista de la consigna de entrega, en el mismo orden. Duración: 10–12 minutos.
 
-## Antes de empezar (5 minutos antes)
+Entorno (ver [`ENTORNO-VIRTUALBOX.md`](ENTORNO-VIRTUALBOX.md)):
 
-- [ ] En el servidor: `sudo tp2-check.sh` → todo en verde.
-- [ ] En el cliente: el archivo `cliente1.conf` importado en WireGuard (túnel **desactivado**).
-- [ ] Clave SSH del cliente instalada en el servidor (`keys/<usuario>.pub` + `setup.sh`).
-- [ ] Un par de archivos de ejemplo en `~/public_html` de un usuario (una imagen, por ejemplo).
-- [ ] Terminal abierta en el servidor: `sudo watch -n1 'nft list chain inet tp2 input | grep counter'`
-      (para ver subir los contadores del firewall durante el punto 2).
+| Máquina | Rol | Direcciones |
+|---|---|---|
+| VM `tp2-servidor` (VirtualBox, Ubuntu 24.04) | Servidor | `192.168.56.10` ("red pública") · `10.8.0.1` (VPN) |
+| PC con Windows | Cliente / "otra computadora de la red" | `192.168.56.1` · `10.8.0.2` (VPN) |
 
-## 1. Arranque automático (requisito 1)
+Los comandos marcados **[Windows]** van en PowerShell en la PC. Los marcados **[servidor]** van en
+una sesión SSH al servidor (`ssh juan@10.8.0.1`). En PowerShell usar `curl.exe` (no `curl`, que es
+otro comando).
 
-En el servidor:
+## Antes de empezar
+
+- [ ] Prender la VM: en VirtualBox, `tp2-servidor` → **Start** (o
+      `& "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe" startvm tp2-servidor --type headless`).
+      Esperar ~1 minuto.
+- [ ] En la app **WireGuard** de Windows, el túnel `pc-windows` aparece **Active**.
+- [ ] **[Windows]** `ssh -t juan@10.8.0.1 sudo tp2-check.sh` → termina en `TODO OK`.
+- [ ] Tener a mano las contraseñas (`C:\Users\juanp\VMs\tp2-credenciales.txt`, fuera del repo).
+
+## 1. VPN levantada y un cliente conectado
+
+**[servidor]**
 
 ```bash
-systemctl is-enabled wg-quick@wg0 docker nftables cron tp2-stack
-docker inspect -f '{{.Name}} -> {{.HostConfig.RestartPolicy.Name}}' tp2-web tp2-netdata
+ip -br addr show wg0          # wg0 con 10.8.0.1/24
+sudo wg show                  # peer con allowed ips 10.8.0.2/32 y "latest handshake" reciente
+sudo grep -A3 cliente /etc/wireguard/wg0.conf   # "# cliente: pc-windows" -> su clave publica
+systemctl is-enabled wg-quick@wg0
 ```
 
-Y la prueba definitiva, que se deja corriendo mientras se explica lo demás:
+En Windows, mostrar la app WireGuard: túnel `pc-windows` **Active**, con datos enviados/recibidos.
+Explicar: cada cliente tiene su par de claves (la privada solo en el cliente, la pública en el
+servidor). Altas con `sudo add-vpn-client.sh <nombre>`.
+
+## 2. Servidor web en Docker
+
+**[servidor]**
+
+```bash
+cat /opt/tp2/docker-compose.yml     # nginx + netdata, puerto publicado en ${VPN_IP}:80
+cat /opt/tp2/.env                   # VPN_IP=10.8.0.1
+sudo docker ps                      # tp2-web y tp2-netdata "Up (healthy)"
+sudo docker port tp2-web            # 8080/tcp -> 10.8.0.1:80   (NO 0.0.0.0)
+```
+
+(Docker se usa con `sudo` a propósito: agregar al admin al grupo `docker` equivale a darle root
+sin contraseña.)
+
+Puntos a explicar:
+
+- El puerto se publica **solo en la IP de la VPN**, no en `0.0.0.0`.
+- `/home` se monta **de solo lectura** en el contenedor y nginx mapea `/~usuario/` →
+  `/home/usuario/public_html/`.
+- nginx corre como usuario no-root, con el sistema de archivos de solo lectura.
+- `restart: unless-stopped` + el servicio `tp2-stack` levantan todo al arrancar.
+
+## 3. La web solo funciona con la VPN levantada
+
+En la app WireGuard: **Deactivate**. Después:
+
+**[Windows]**
+
+```powershell
+curl.exe -m 5 http://10.8.0.1/                       # falla: sin VPN no hay ruta
+Test-NetConnection 192.168.56.10 -Port 80            # TcpTestSucceeded : False  (bloqueado)
+Test-NetConnection 192.168.56.10 -Port 19999         # False (métricas bloqueadas)
+Test-NetConnection 192.168.56.10 -Port 22            # True: SSH de emergencia para el admin
+```
+
+Mostrar el firewall **[servidor]** (se puede entrar igual con `ssh juan@192.168.56.10`, el SSH de
+emergencia):
+
+```bash
+sudo nft list table inet tp2        # policy drop; solo UDP 51820 y TCP 22 desde afuera
+                                    # contadores de "web/metricas: solo por VPN" subiendo
+```
+
+Volver a **Activate** en WireGuard:
+
+```powershell
+curl.exe -I http://10.8.0.1/                         # HTTP/1.1 200 OK
+```
+
+Y en el navegador: `http://10.8.0.1/` (página principal con los usuarios) y
+`http://10.8.0.1:19999/` (Netdata: CPU, RAM, disco y, en *Network*, el tráfico de `wg0`).
+
+## 4. `public_html`: crear un archivo nuevo y que aparezca
+
+**[servidor]**
+
+```bash
+sudo -u kakashi bash -c 'echo "Hola profe, archivo creado en vivo" > ~/public_html/en-vivo.txt'
+ls -l /home/kakashi/public_html/
+```
+
+En el navegador: `http://10.8.0.1/~kakashi/` → aparece `en-vivo.txt` → abrirlo.
+
+Permisos del sistema operativo:
+
+```bash
+sudo chmod 600 /home/kakashi/public_html/en-vivo.txt   # recargar el navegador -> 403 Forbidden
+sudo chmod 644 /home/kakashi/public_html/en-vivo.txt   # recargar -> se ve de nuevo
+```
+
+**Bonus (auth básica):** `http://10.8.0.1/~kakashi/privado/` pide usuario y contraseña
+(`admin` / la de `tp2-credenciales.txt`). Con una clave incorrecta da 401.
+
+## 5. Acceso SSH del administrador con claves
+
+**[Windows]**
+
+```powershell
+ssh juan@10.8.0.1                                        # entra con la clave, sin contraseña
+ssh -o PubkeyAuthentication=no juan@10.8.0.1             # Permission denied (publickey)
+```
+
+**[servidor]**
+
+```bash
+sudo sshd -T | grep -E 'passwordauthentication|permitrootlogin|pubkeyauthentication'
+cat ~/.ssh/authorized_keys          # clave pública de la PC; la privada está solo en Windows
+```
+
+## 6. Backup: script + crontab
+
+**[servidor]**
+
+```bash
+cat /etc/cron.d/tp2                 # backup-home.sh cada 15 min, índice web cada 5 min
+less /usr/local/sbin/backup-home.sh # rsync con --link-dest (snapshots incrementales)
+ls -l /var/backups/home/            # snapshots fechados + "latest"
+tail /var/log/tp2-backup.log        # corridas automáticas de cron (aparece tras la primera)
+```
+
+Restaurar un archivo borrado por accidente:
+
+```bash
+sudo backup-home.sh                                         # backup ahora (si no esperar al cron)
+sudo rm /home/kakashi/public_html/en-vivo.txt               # "accidente" -> en el navegador: 404
+sudo restore-home.sh kakashi public_html/en-vivo.txt        # recargar -> 200 de nuevo
+```
+
+## 7. Reinicio sin intervención manual
+
+**[servidor]**
 
 ```bash
 sudo reboot
 ```
 
-## 2. Aislamiento y firewall (requisito 2) — *sin VPN*
+Esperar ~1 minuto, **sin tocar nada** (WireGuard en Windows se reconecta solo). Después:
 
-Con el túnel **desactivado** en el cliente, desde el cliente:
+**[Windows]**
 
-```bash
-nmap -Pn -p 22,80,443,19999 <IP-DEL-SERVIDOR>        # 22 open · 80/443/19999 filtered
-nmap -Pn -sU -p 51820 <IP-DEL-SERVIDOR>              # open|filtered (WireGuard no responde sin clave)
-curl -m 5 http://<IP-DEL-SERVIDOR>/                  # timeout
-curl -m 5 http://<IP-DEL-SERVIDOR>:19999/            # timeout
+```powershell
+ssh -t juan@10.8.0.1 sudo tp2-check.sh                    # todo [ OK ] -> "TODO OK"
 ```
 
-En el servidor se ve cómo suben los contadores de las reglas `web/metricas: solo por VPN`.
-Mostrar el conjunto de reglas: `sudo nft list table inet tp2`.
-
-Mostrar que los puertos están enlazados solo a la VPN:
-
-```bash
-docker port tp2-web 8080/tcp          # 10.8.0.1:80
-sudo ss -tlnp | grep -E ':(80|19999)\b'
-```
-
-## 3. Conexión VPN (requisito 4)
-
-Activar el túnel en el cliente y verificar:
-
-```bash
-ping 10.8.0.1
-```
-
-En el servidor: `sudo wg show` → aparece el peer con *latest handshake* reciente.
-
-## 4. Servicios web por la VPN (requisitos 3 y 5)
-
-En el navegador del cliente:
-
-1. `http://10.8.0.1/` → página principal con enlaces a cada usuario.
-2. Click en `/~kakashi/` → su página. Abrir un archivo, por ejemplo `http://10.8.0.1/~kakashi/naruto-run.jpg`.
-3. Mostrar de dónde sale: en el servidor, `ls -l /home/kakashi/public_html/` y
-   `docker inspect tp2-web | grep -A3 /home` (volumen `/home:/home:ro`).
-4. **Permisos del SO**: `sudo chmod 600 /home/kakashi/public_html/<archivo>` → recargar → `403`;
-   volver a `644`.
-5. **Bonus**: `http://10.8.0.1/~kakashi/privado/` → pide usuario y contraseña (`admin` / la de
-   `/root/tp2-credenciales.txt`). Probar una clave incorrecta (401) y la correcta (200).
-
-## 5. Monitoreo (requisito 6)
-
-`http://10.8.0.1:19999/` → Netdata. Mostrar:
-
-- **CPU**, **RAM** y **Disk** en el panel principal.
-- Sección **Network Interfaces → wg0**: generar tráfico (recargar páginas, descargar un archivo
-  grande) y mostrar el gráfico de `wg0` subiendo.
-
-## 6. SSH (requisitos 2 y 4)
-
-Desde el cliente, con la VPN activa:
-
-```bash
-ssh kakashi@10.8.0.1                 # entra con clave, sin contraseña
-```
-
-Mostrar que las contraseñas están deshabilitadas:
-
-```bash
-ssh -o PubkeyAuthentication=no kakashi@10.8.0.1       # Permission denied (publickey)
-```
-
-Y en el servidor: `sudo sshd -T | grep -E 'passwordauth|permitroot'`.
-
-## 7. Backup y restauración (requisito 7)
-
-En el servidor (o por SSH como `kakashi`):
-
-```bash
-sudo backup-home.sh                                   # fuerza un backup ahora
-ls -l /var/backups/home/                              # snapshots + latest
-
-sudo rm ~kakashi/public_html/naruto-run.jpg           # "accidente" (sin sudo si se esta logueado como kakashi)
-curl -I http://10.8.0.1/~kakashi/naruto-run.jpg       # 404
-
-sudo restore-home.sh kakashi public_html/naruto-run.jpg
-curl -I http://10.8.0.1/~kakashi/naruto-run.jpg       # 200 otra vez
-```
-
-Mostrar la tarea programada: `cat /etc/cron.d/tp2`.
-
-## 8. Después del reinicio (cierre del punto 1)
-
-Cuando el servidor termine de arrancar, **sin haber tocado nada**:
-
-```bash
-sudo tp2-check.sh                     # todo OK
-```
-
-Reconectar el túnel en el cliente y recargar `http://10.8.0.1/` y el panel de Netdata.
+Y recargar `http://10.8.0.1/` y Netdata en el navegador.
 
 ---
 
@@ -128,10 +169,10 @@ Reconectar el túnel en el cliente y recargar `http://10.8.0.1/` y el panel de N
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
-| Los contenedores no levantan: `cannot assign requested address` | `wg0` no estaba arriba cuando arrancó Docker | `systemctl status wg-quick@wg0`; revisar el drop-in `docker.service.d/10-tp2-wg0.conf` y `systemctl restart tp2-stack` |
-| El cliente no conecta (sin *handshake*) | Endpoint incorrecto o UDP 51820 bloqueado/no redirigido | Revisar `Endpoint` en `cliente1.conf`; si hay NAT/router, abrir UDP 51820 hacia el servidor |
+| El túnel no conecta (sin *handshake*) | La VM está apagada o cambió su IP | Prender la VM; `ping 192.168.56.10` desde Windows |
+| Los contenedores no levantan: `cannot assign requested address` | `wg0` no estaba arriba cuando arrancó Docker | `systemctl status wg-quick@wg0`; `sudo systemctl restart tp2-stack` |
 | `403 Forbidden` en `/~usuario/` | Home o `public_html` sin permisos de paso | `chmod 711 /home/usuario && chmod 755 /home/usuario/public_html` |
-| `404` en `/~usuario/` | Falta `public_html` o el usuario no existe | Revisar `ls -ld /home/usuario/public_html` |
-| Quedé afuera por SSH | Se deshabilitó la contraseña sin tener clave instalada | Entrar por la consola de la VM, instalar la clave en `~/.ssh/authorized_keys` |
+| `404` en `/~usuario/` | Falta `public_html` o el usuario no existe | `ls -ld /home/usuario/public_html` |
+| No entra por SSH | Falta la clave o se usa otro usuario | Usar `ssh juan@...`; la clave está en `%USERPROFILE%\.ssh\id_ed25519` |
 | Cambié `default.conf` y no se refleja | nginx no recargó | `cd /opt/tp2 && docker compose exec web nginx -s reload` |
 | Un usuario nuevo no aparece en el índice | El índice se regenera cada 5 min | `sudo genindex.sh` |

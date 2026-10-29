@@ -47,8 +47,12 @@ if wg show wg0 latest-handshakes 2>/dev/null | awk '$2 > 0 {f=1} END {exit !f}';
 
 title "3. Firewall e aislamiento de red"
 nft list table inet tp2 >/dev/null 2>&1 && ok "tabla nftables 'inet tp2' cargada" || bad "no esta cargada la tabla 'inet tp2'"
-nft list chain inet tp2 input   2>/dev/null | grep -q 'policy drop' && ok "INPUT con politica drop"   || bad "INPUT sin politica drop"
-nft list chain inet tp2 forward 2>/dev/null | grep -q 'policy drop' && ok "FORWARD con politica drop" || bad "FORWARD sin politica drop"
+# Se guarda la salida en una variable: con "nft ... | grep -q" y pipefail, grep corta antes y nft
+# termina con SIGPIPE (141), lo que daria una falla falsa.
+chain_in="$(nft list chain inet tp2 input 2>/dev/null)"
+chain_fw="$(nft list chain inet tp2 forward 2>/dev/null)"
+grep -q 'policy drop' <<<"$chain_in" && ok "INPUT con politica drop"   || bad "INPUT sin politica drop"
+grep -q 'policy drop' <<<"$chain_fw" && ok "FORWARD con politica drop" || bad "FORWARD sin politica drop"
 web_bind="$(docker port tp2-web 8080/tcp 2>/dev/null | head -n1)"
 if [ "$web_bind" = "${VPN_IP}:80" ]; then ok "web publicada solo en ${VPN_IP}:80"; else bad "web publicada en '${web_bind:-nada}' (esperado ${VPN_IP}:80)"; fi
 listen="$(ss -H -tln 2>/dev/null | awk '{print $4}')"

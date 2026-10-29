@@ -305,8 +305,9 @@ step_firewall() {
         warn "ufw estaba activo: lo desactivo para que no pise las reglas de nftables"
         ufw --force disable >/dev/null
     fi
+    # restart (y no "nft -f") para que la unidad quede "active": el servicio carga /etc/nftables.conf
     systemctl enable nftables >/dev/null 2>&1
-    nft -f /etc/nftables.conf
+    systemctl restart nftables
 }
 
 step_ssh() {

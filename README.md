@@ -48,7 +48,8 @@ sudo ./setup.sh
 
 La guía manual, paso a paso y con la explicación de cada decisión, está en
 **[`docs/INSTALACION.md`](docs/INSTALACION.md)**. El guion de la demo en vivo, en
-**[`docs/DEMO.md`](docs/DEMO.md)**.
+**[`docs/DEMO.md`](docs/DEMO.md)**, y cómo se armó el laboratorio de la demo (VM de VirtualBox +
+cliente Windows), en **[`docs/ENTORNO-VIRTUALBOX.md`](docs/ENTORNO-VIRTUALBOX.md)**.
 
 ## Estructura del repositorio
 
@@ -74,7 +75,7 @@ La guía manual, paso a paso y con la explicación de cada decisión, está en
 │   ├── add-vpn-client.sh         alta de clientes WireGuard
 │   └── tp2-check.sh              verificación de todos los requisitos
 ├── keys/                         claves públicas SSH de los usuarios (<usuario>.pub)
-└── docs/                         INSTALACION.md · DEMO.md
+└── docs/                         INSTALACION.md · DEMO.md · ENTORNO-VIRTUALBOX.md
 ```
 
 ## Cumplimiento de requisitos
